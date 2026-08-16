@@ -1,5 +1,5 @@
-const CACHE = "night-shift-coverage-v2";
-const CORE = ["./", "./index.html", "./config.js", "./manifest.webmanifest"];
+const CACHE = "night-shift-coverage-v3";
+const CORE = ["./", "./index.html", "./manifest.webmanifest"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)));

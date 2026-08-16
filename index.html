@@ -58,7 +58,7 @@
 </main>
 <dialog id="authDialog" class="authDialog"><form method="dialog" class="authBox" id="authForm"><h2>夜勤表へログイン</h2><p>この夜勤表は岩崎さん専用です。PCとiPhoneで同じアカウントを使用してください。</p><label>メールアドレス<input id="authEmail" type="email" autocomplete="username" required></label><label>パスワード<input id="authPassword" type="password" autocomplete="current-password" required></label><p id="authError" class="authError"></p><div class="authActions"><button class="secondary" id="authCancel" type="button">閉じる</button><button class="primary" id="authSubmit" type="submit">ログイン</button></div></form></dialog>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="config.js"></script>
+<script src="config.js?v=2"></script>
 <script>
 const INITIAL_STATE = {"version":1,"staff":[],"schedules":{}};
 const STORES=["春日","大成","花園"],DAYS=["日","月","火","水","木","金","土"],NO_NIGHT="__NO_NIGHT__";
