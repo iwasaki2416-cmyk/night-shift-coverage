@@ -1,0 +1,9 @@
+{
+  "name": "夜勤者充足管理",
+  "short_name": "夜勤管理",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f5f7f2",
+  "theme_color": "#183024",
+  "lang": "ja"
+}
