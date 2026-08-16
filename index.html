@@ -240,7 +240,7 @@ function startRealtime(){if(realtimeChannel) return;realtimeChannel=supabaseClie
   unlockForSession();saveEl.textContent="前回データ";render();
   try{await loadRemote();showSyncNotice("")}catch(e){saveEl.textContent="前回データ";saveEl.className="save error";showSyncNotice("最新データを取得できないため、前回データを表示しています。")}
   startRealtime();
-  if("serviceWorker" in navigator)navigator.serviceWorker.register("service-worker.js").catch(()=>{});
+  if("serviceWorker" in navigator)navigator.serviceWorker.register("service-worker.js?v=5",{updateViaCache:"none"}).then(registration=>registration.update()).catch(()=>{});
 })();
 </script>
 </body>

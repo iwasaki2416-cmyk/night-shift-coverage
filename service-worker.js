@@ -1,4 +1,4 @@
-const CACHE = "night-shift-coverage-v4";
+const CACHE = "night-shift-coverage-v5";
 const CORE = ["./", "./index.html", "./manifest.webmanifest"];
 
 self.addEventListener("install", event => {
@@ -22,7 +22,10 @@ self.addEventListener("fetch", event => {
     })));
     return;
   }
-  event.respondWith(fetch(event.request).then(response => {
+  const freshRequest = event.request.mode === "navigate" || url.pathname.endsWith("/index.html") || url.pathname.endsWith("/config.js")
+    ? new Request(event.request, {cache: "no-store"})
+    : event.request;
+  event.respondWith(fetch(freshRequest).then(response => {
     const copy = response.clone();
     caches.open(CACHE).then(cache => cache.put(event.request, copy));
     return response;
