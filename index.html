@@ -128,13 +128,15 @@ function autoSchedule(){
     order.forEach(store=>{
       const choices=people.filter(p=>!used.has(p.id)&&!previous.has(p.id)&&alternatingRunBefore(out,date,p.id)<3&&p.helpStores.includes(store)&&available(p,date)&&(counts[p.id]||0)<p.max).sort((a,b)=>{
         const ac=counts[a.id]||0,bc=counts[b.id]||0,ab=ac<a.min?1:0,bb=bc<b.min?1:0;
+        const atarget=targets[a.id]||a.min||a.max,btarget=targets[b.id]||b.min||b.max;
+        const ar=storeRank(a,store),br=storeRank(b,store);if(ar!==br)return ar-br;
+        if(atarget!==btarget)return btarget-atarget;
         if(ab&&bb&&a.allowedWeekdays.length!==b.allowedWeekdays.length)return a.allowedWeekdays.length-b.allowedWeekdays.length;
-        const elapsed=dayNumber(date)/daysInMonth(month),atarget=targets[a.id]||a.min||a.max,btarget=targets[b.id]||b.min||b.max,apace=(ac+1)/Math.max(atarget,1)-elapsed,bpace=(bc+1)/Math.max(btarget,1)-elapsed;if(apace!==bpace)return apace-bpace;
+        const elapsed=dayNumber(date)/daysInMonth(month),apace=(ac+1)/Math.max(atarget,1)-elapsed,bpace=(bc+1)/Math.max(btarget,1)-elapsed;if(apace!==bpace)return apace-bpace;
         const ap=periodCount(out,date,a.id)/Math.max(atarget/3,1),bp=periodCount(out,date,b.id)/Math.max(btarget/3,1);if(ap!==bp)return ap-bp;
         const ag=daysSinceLastAssignment(out,date,a.id),bg=daysSinceLastAssignment(out,date,b.id);if(ag!==bg)return bg-ag;
         if(ab!==bb)return bb-ab;
         if(a.allowedWeekdays.length!==b.allowedWeekdays.length)return a.allowedWeekdays.length-b.allowedWeekdays.length;
-        const ar=storeRank(a,store),br=storeRank(b,store);if(ar!==br)return ar-br;
         const ah=a.homeStore===store?1:0,bh=b.homeStore===store?1:0;if(ah!==bh)return bh-ah;
         return ac/Math.max(a.max,1)-bc/Math.max(b.max,1);
       });
