@@ -88,21 +88,50 @@ const isAssignment=id=>Boolean(id)&&id!==NO_NIGHT;
 const assignedOn=d=>{const m=d.slice(0,7),row=state.schedules[m]&&state.schedules[m][d]||{};return new Set(Object.values(row).filter(isAssignment))};
 const scheduleHasData=s=>Object.values(s||{}).some(v=>Object.values(v||{}).some(Boolean));
 function countsFor(schedule){const c={};Object.values(schedule||{}).forEach(row=>Object.values(row||{}).forEach(id=>{if(isAssignment(id))c[id]=(c[id]||0)+1}));return c}
+const dayNumber=d=>Number(d.slice(-2));
+const periodIndex=d=>Math.min(2,Math.floor((dayNumber(d)-1)/10));
+function personAssigned(schedule,date,id){return Object.values(schedule[date]||{}).includes(id)}
+function daysSinceLastAssignment(schedule,date,id){
+  const day=dayNumber(date);for(let n=day-1;n>=1;n--){const d=month+"-"+String(n).padStart(2,"0");if(personAssigned(schedule,d,id))return day-n}
+  for(let back=1;back<=10;back++){const d=shiftDate(month+"-01",-back);if(assignedOn(d).has(id))return day+back-1}
+  return 99;
+}
+function alternatingRunBefore(schedule,date,id){
+  let run=0,cursor=shiftDate(date,-2);while(run<3){const source=cursor.slice(0,7)===month?schedule:null;if(source?personAssigned(source,cursor,id):assignedOn(cursor).has(id)){run++;cursor=shiftDate(cursor,-2)}else break}return run;
+}
+function periodCount(schedule,date,id){
+  const period=periodIndex(date);return Object.entries(schedule).reduce((count,[d,row])=>count+(periodIndex(d)===period&&Object.values(row||{}).includes(id)?1:0),0);
+}
+function plannedCounts(people,existing){
+  const target=Object.fromEntries(people.map(p=>[p.id,Math.min(p.min,p.max)]));
+  const required=dates(month).reduce((total,date)=>total+STORES.filter(store=>!(existing[date]&&existing[date][store]===NO_NIGHT)).length,0);
+  let remaining=Math.max(0,required-Object.values(target).reduce((n,v)=>n+v,0));
+  while(remaining>0){
+    const choices=people.filter(p=>target[p.id]<p.max).sort((a,b)=>target[a.id]/Math.max(a.max,1)-target[b.id]/Math.max(b.max,1)||b.allowedWeekdays.length-a.allowedWeekdays.length||b.helpStores.length-a.helpStores.length);
+    if(!choices.length)break;target[choices[0].id]++;remaining--;
+  }
+  return target;
+}
 function autoSchedule(){
-  const out={},counts={},people=state.staff.filter(active),existing=state.schedules[month]||{};
+  const out={},counts={},people=state.staff.filter(active),existing=state.schedules[month]||{},targets=plannedCounts(people,existing);
   dates(month).forEach(date=>{
     const previousDate=shiftDate(date,-1);
     out[date]={};const used=new Set(),previous=previousDate.slice(0,7)===month?new Set(Object.values(out[previousDate]||{}).filter(isAssignment)):assignedOn(previousDate);
     const noNightStores=new Set(STORES.filter(store=>existing[date]&&existing[date][store]===NO_NIGHT));
     noNightStores.forEach(store=>out[date][store]=NO_NIGHT);
     const order=STORES.filter(store=>!noNightStores.has(store)).sort((a,b)=>{
-      const n=s=>people.filter(p=>!previous.has(p.id)&&p.helpStores.includes(s)&&available(p,date)&&(counts[p.id]||0)<p.max).length;
+      const n=s=>people.filter(p=>!previous.has(p.id)&&alternatingRunBefore(out,date,p.id)<3&&p.helpStores.includes(s)&&available(p,date)&&(counts[p.id]||0)<p.max).length;
       return n(a)-n(b);
     });
     order.forEach(store=>{
-      const choices=people.filter(p=>!used.has(p.id)&&!previous.has(p.id)&&p.helpStores.includes(store)&&available(p,date)&&(counts[p.id]||0)<p.max).sort((a,b)=>{
+      const choices=people.filter(p=>!used.has(p.id)&&!previous.has(p.id)&&alternatingRunBefore(out,date,p.id)<3&&p.helpStores.includes(store)&&available(p,date)&&(counts[p.id]||0)<p.max).sort((a,b)=>{
         const ac=counts[a.id]||0,bc=counts[b.id]||0,ab=ac<a.min?1:0,bb=bc<b.min?1:0;
-        if(ab!==bb)return bb-ab;if(a.allowedWeekdays.length!==b.allowedWeekdays.length)return a.allowedWeekdays.length-b.allowedWeekdays.length;
+        if(ab&&bb&&a.allowedWeekdays.length!==b.allowedWeekdays.length)return a.allowedWeekdays.length-b.allowedWeekdays.length;
+        const elapsed=dayNumber(date)/daysInMonth(month),atarget=targets[a.id]||a.min||a.max,btarget=targets[b.id]||b.min||b.max,apace=(ac+1)/Math.max(atarget,1)-elapsed,bpace=(bc+1)/Math.max(btarget,1)-elapsed;if(apace!==bpace)return apace-bpace;
+        const ap=periodCount(out,date,a.id)/Math.max(atarget/3,1),bp=periodCount(out,date,b.id)/Math.max(btarget/3,1);if(ap!==bp)return ap-bp;
+        const ag=daysSinceLastAssignment(out,date,a.id),bg=daysSinceLastAssignment(out,date,b.id);if(ag!==bg)return bg-ag;
+        if(ab!==bb)return bb-ab;
+        if(a.allowedWeekdays.length!==b.allowedWeekdays.length)return a.allowedWeekdays.length-b.allowedWeekdays.length;
         const ah=a.homeStore===store?1:0,bh=b.homeStore===store?1:0;if(ah!==bh)return bh-ah;
         return ac/Math.max(a.max,1)-bc/Math.max(b.max,1);
       });
@@ -143,7 +172,7 @@ function reorderPerson(personId,targetId,after=false){if(!personId||personId===t
 function movePersonByStep(personId,step){const visible=state.staff.filter(active),index=visible.findIndex(p=>p.id===personId),target=visible[index+step];if(index<0||!target)return;reorderPerson(personId,target.id,step>0)}
 function renderSchedule(){
   const s=state.schedules[month]||{},allDates=dates(month),mobile=Boolean(window.matchMedia&&window.matchMedia("(max-width:760px)").matches),maxWeek=Math.ceil(allDates.length/7)-1;scheduleWeek=Math.max(0,Math.min(scheduleWeek,maxWeek));const shownDates=mobile?allDates.slice(scheduleWeek*7,scheduleWeek*7+7):allDates,people=state.staff.filter(active),counts=countsFor(s),rangeLabel=Number(shownDates[0].slice(-2))+"日〜"+Number(shownDates[shownDates.length-1].slice(-2))+"日";
-  let html='<div class="lead"><div><h2>'+esc(month.replace("-","年"))+'月 確認・入れ替え</h2><p class="ruleNote">縦が夜勤者、横が日付です。セルから店舗を直接変更できます。</p><div class="legend"><span class="k">春日夜</span><span class="t">大成夜</span><span class="h">花園夜</span><span class="u">希望休</span><span class="n">出勤不可</span></div></div><button class="primary" id="auto">条件から自動割当</button></div><div class="matrixPager"><button id="prevWeek" '+(scheduleWeek===0?'disabled':'')+'>‹ 前週</button><b>'+rangeLabel+'</b><button id="nextWeek" '+(scheduleWeek===maxWeek?'disabled':'')+'>次週 ›</button></div><div class="matrixWrap"><div class="shiftMatrix" style="--cols:'+shownDates.length+'"><div class="matrixCorner">夜勤者／日付</div>';
+  let html='<div class="lead"><div><h2>'+esc(month.replace("-","年"))+'月 確認・入れ替え</h2><p class="ruleNote">自動割当は勤務間隔と月内の分散を優先し、隔日勤務は3回までに調整します。セルから直接変更できます。</p><div class="legend"><span class="k">春日夜</span><span class="t">大成夜</span><span class="h">花園夜</span><span class="u">希望休</span><span class="n">出勤不可</span></div></div><button class="primary" id="auto">条件から自動割当</button></div><div class="matrixPager"><button id="prevWeek" '+(scheduleWeek===0?'disabled':'')+'>‹ 前週</button><b>'+rangeLabel+'</b><button id="nextWeek" '+(scheduleWeek===maxWeek?'disabled':'')+'>次週 ›</button></div><div class="matrixWrap"><div class="shiftMatrix" style="--cols:'+shownDates.length+'"><div class="matrixCorner">夜勤者／日付</div>';
   shownDates.forEach(date=>{const w=weekday(date),noNightStores=STORES.filter(store=>s[date]&&s[date][store]===NO_NIGHT);html+='<div class="matrixDate '+(w===0?'sun':w===6?'sat':'')+'"><b>'+Number(date.slice(-2))+DAYS[w]+'</b>'+(noNightStores.length?'<small>'+noNightStores.map(store=>store.slice(0,1)).join("・")+'無</small>':'')+'</div>'});
   people.forEach((p,index)=>{html+='<div class="matrixName" draggable="true" data-drag-person="'+p.id+'"><span class="dragGrip" title="ドラッグして並べ替え">↕</span><span class="personLabel">'+esc(p.name)+'</span><small>'+esc((p.homeStore||"未").slice(0,1))+' '+(counts[p.id]||0)+'回</small><span class="rowMoves"><button type="button" title="上へ" data-move-person="'+p.id+'" data-move-step="-1" '+(index===0?'disabled':'')+'>↑</button><button type="button" title="下へ" data-move-person="'+p.id+'" data-move-step="1" '+(index===people.length-1?'disabled':'')+'>↓</button></span></div>';shownDates.forEach(date=>{const selected=assignedStore(s,date,p.id),blocked=list(p,"blockedDates").includes(date),can=available(p,date),adjacent=new Set([...assignedOn(shiftDate(date,-1)),...assignedOn(shiftDate(date,1))]),conflict=selected&&adjacent.has(p.id);if(selected||can){html+='<div class="matrixCell open"><select title="'+esc(p.name)+'・'+Number(date.slice(-2))+'日" class="'+storeClass(selected)+(conflict?' conflict':'')+'" data-person-date="'+date+'" data-person-id="'+p.id+'">'+personStoreOptions(selected)+'</select></div>'}else if(blocked){html+='<div class="matrixCell wish">希休</div>'}else{html+='<div class="matrixCell unavailable">—</div>'}})});
   html+='</div></div><p class="matrixHint">セルで直接変更できます。氏名の↕をドラッグ、スマホは↑↓で並べ替えできます。「春無・大無・花無」は各店舗の夜勤なしです。<b>赤枠</b>は連続夜勤です。</p>';app.innerHTML=html;
