@@ -129,8 +129,10 @@ function autoSchedule(){
       const choices=people.filter(p=>!used.has(p.id)&&!previous.has(p.id)&&alternatingRunBefore(out,date,p.id)<3&&p.helpStores.includes(store)&&available(p,date)&&(counts[p.id]||0)<p.max).sort((a,b)=>{
         const ac=counts[a.id]||0,bc=counts[b.id]||0,ab=ac<a.min?1:0,bb=bc<b.min?1:0;
         const atarget=targets[a.id]||a.min||a.max,btarget=targets[b.id]||b.min||b.max;
+        const elapsed=dayNumber(date)/daysInMonth(month),aquota=a.min>=10?Math.max(0,Math.ceil(elapsed*a.min)-ac):0,bquota=b.min>=10?Math.max(0,Math.ceil(elapsed*b.min)-bc):0;
+        if(aquota!==bquota)return bquota-aquota;
         const arun=alternatingRunBefore(out,date,a.id),brun=alternatingRunBefore(out,date,b.id);if(arun!==brun)return arun-brun;
-        const elapsed=dayNumber(date)/daysInMonth(month),apace=(ac+1)/Math.max(atarget,1)-elapsed,bpace=(bc+1)/Math.max(btarget,1)-elapsed;if(apace!==bpace)return apace-bpace;
+        const apace=(ac+1)/Math.max(atarget,1)-elapsed,bpace=(bc+1)/Math.max(btarget,1)-elapsed;if(apace!==bpace)return apace-bpace;
         const ap=periodCount(out,date,a.id)/Math.max(atarget/3,1),bp=periodCount(out,date,b.id)/Math.max(btarget/3,1);if(ap!==bp)return ap-bp;
         const ag=daysSinceLastAssignment(out,date,a.id),bg=daysSinceLastAssignment(out,date,b.id);if(ag!==bg)return bg-ag;
         const ar=storeRank(a,store),br=storeRank(b,store);if(ar!==br)return ar-br;
