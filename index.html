@@ -70,10 +70,19 @@ const CACHE_KEY="nijiiro-night-shift-state-v2",config=window.NIGHT_SHIFT_CONFIG|
 const supabaseSdkReady=new Promise((resolve,reject)=>{const script=document.createElement("script");script.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";script.async=true;script.onload=resolve;script.onerror=reject;document.head.appendChild(script)});
 const clone=v=>JSON.parse(JSON.stringify(v));
 const staffName=p=>String(p&&p.name||"").replace(/\s/g,"").replace(/さん$/,"");
-const isStaff=(p,name)=>staffName(p)===name;
+const isStaff=(p,name)=>staffName(p)===name||staffName(p).startsWith(name);
 function applyStaffRules(next){
   if(!next||!Array.isArray(next.staff))return next;
-  next.staff.forEach(p=>{if(isStaff(p,"福島")){p.min=5;p.max=5}else if(isStaff(p,"大平")){p.min=2;p.max=Math.max(2,Number(p.max)||0)}});return next;
+  next.staff.forEach(p=>{
+    const name=staffName(p);
+    if(isStaff(p,"福島")){p.min=5;p.max=5}
+    else if(isStaff(p,"大平")){p.min=2;p.max=Math.max(2,Number(p.max)||0)}
+    else if(isStaff(p,"塩田")){p.min=11;p.max=11}
+    else if(["松本みゆき","佐藤美佳","相内緑","阿部和貴"].includes(name)){p.min=10;p.max=11}
+    else if(isStaff(p,"村田")){p.max=4}
+  });
+  next.schedules=next.schedules||{};next.schedules["2026-09"]=next.schedules["2026-09"]||{};next.schedules["2026-09"]["2026-09-20"]=next.schedules["2026-09"]["2026-09-20"]||{};next.schedules["2026-09"]["2026-09-20"]["大成"]=NO_NIGHT;
+  return next;
 }
 function setEditMode(value){canEdit=Boolean(value);document.body.classList.toggle("readonly",!canEdit);loginEl.textContent=canEdit?"編集中・ログアウト":"閲覧モード";loginEl.classList.toggle("active",canEdit);if(!canEdit&&tab==="staff")switchTab("dashboard")}
 const mobileView=()=>Boolean(window.matchMedia&&window.matchMedia("(max-width:760px)").matches);
@@ -128,11 +137,11 @@ function autoSchedule(){
     const noNightStores=new Set(STORES.filter(store=>existing[date]&&existing[date][store]===NO_NIGHT));
     noNightStores.forEach(store=>out[date][store]=NO_NIGHT);
     const order=STORES.filter(store=>!noNightStores.has(store)).sort((a,b)=>{
-      const n=s=>people.filter(p=>!previous.has(p.id)&&alternatingRunBefore(out,date,p.id)<3&&p.helpStores.includes(s)&&available(p,date)&&(counts[p.id]||0)<p.max).length;
+      const n=s=>people.filter(p=>!previous.has(p.id)&&p.helpStores.includes(s)&&available(p,date)&&(counts[p.id]||0)<p.max).length;
       return n(a)-n(b);
     });
     order.forEach(store=>{
-      const choices=people.filter(p=>!used.has(p.id)&&!previous.has(p.id)&&alternatingRunBefore(out,date,p.id)<3&&p.helpStores.includes(store)&&available(p,date)&&(counts[p.id]||0)<p.max).sort((a,b)=>{
+      const choices=people.filter(p=>!used.has(p.id)&&!previous.has(p.id)&&p.helpStores.includes(store)&&available(p,date)&&(counts[p.id]||0)<p.max).sort((a,b)=>{
         const ac=counts[a.id]||0,bc=counts[b.id]||0,ab=ac<a.min?1:0,bb=bc<b.min?1:0;
         const atarget=targets[a.id]||a.min||a.max,btarget=targets[b.id]||b.min||b.max;
         const areserve=isStaff(a,"大平")&&ac>=2?1:0,breserve=isStaff(b,"大平")&&bc>=2?1:0;if(areserve!==breserve)return areserve-breserve;
