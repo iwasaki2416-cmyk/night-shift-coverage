@@ -69,6 +69,12 @@ let state=null,tab="dashboard",month="",saveTimer,scheduleWeek=0,draggedPersonId
 const CACHE_KEY="nijiiro-night-shift-state-v2",config=window.NIGHT_SHIFT_CONFIG||{},app=document.querySelector("#app"),monthInput=document.querySelector("#month"),saveEl=document.querySelector("#save"),loginEl=document.querySelector("#editLogin"),exportEl=document.querySelector("#exportData"),importEl=document.querySelector("#importData"),importFile=document.querySelector("#importFile"),authDialog=document.querySelector("#authDialog"),authForm=document.querySelector("#authForm"),authEmail=document.querySelector("#authEmail"),authPassword=document.querySelector("#authPassword"),authError=document.querySelector("#authError"),authSubmit=document.querySelector("#authSubmit"),syncNotice=document.querySelector("#syncNotice");
 const supabaseSdkReady=new Promise((resolve,reject)=>{const script=document.createElement("script");script.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";script.async=true;script.onload=resolve;script.onerror=reject;document.head.appendChild(script)});
 const clone=v=>JSON.parse(JSON.stringify(v));
+const staffName=p=>String(p&&p.name||"").replace(/\s/g,"").replace(/さん$/,"");
+const isStaff=(p,name)=>staffName(p)===name;
+function applyStaffRules(next){
+  if(!next||!Array.isArray(next.staff))return next;
+  next.staff.forEach(p=>{if(isStaff(p,"福島")){p.min=5;p.max=5}else if(isStaff(p,"大平")){p.min=2;p.max=Math.max(2,Number(p.max)||0)}});return next;
+}
 function setEditMode(value){canEdit=Boolean(value);document.body.classList.toggle("readonly",!canEdit);loginEl.textContent=canEdit?"編集中・ログアウト":"閲覧モード";loginEl.classList.toggle("active",canEdit);if(!canEdit&&tab==="staff")switchTab("dashboard")}
 const mobileView=()=>Boolean(window.matchMedia&&window.matchMedia("(max-width:760px)").matches);
 function requireLogin(message=""){document.body.classList.add("locked");setEditMode(false);authDialog.classList.add("required");authError.textContent=message;if(!authDialog.open)authDialog.showModal()}
@@ -129,6 +135,7 @@ function autoSchedule(){
       const choices=people.filter(p=>!used.has(p.id)&&!previous.has(p.id)&&alternatingRunBefore(out,date,p.id)<3&&p.helpStores.includes(store)&&available(p,date)&&(counts[p.id]||0)<p.max).sort((a,b)=>{
         const ac=counts[a.id]||0,bc=counts[b.id]||0,ab=ac<a.min?1:0,bb=bc<b.min?1:0;
         const atarget=targets[a.id]||a.min||a.max,btarget=targets[b.id]||b.min||b.max;
+        const areserve=isStaff(a,"大平")&&ac>=2?1:0,breserve=isStaff(b,"大平")&&bc>=2?1:0;if(areserve!==breserve)return areserve-breserve;
         const elapsed=dayNumber(date)/daysInMonth(month),aquota=a.min>=10?Math.max(0,Math.ceil(elapsed*a.min)-ac):0,bquota=b.min>=10?Math.max(0,Math.ceil(elapsed*b.min)-bc):0;
         if(aquota!==bquota)return bquota-aquota;
         const arun=alternatingRunBefore(out,date,a.id),brun=alternatingRunBefore(out,date,b.id);if(arun!==brun)return arun-brun;
@@ -262,8 +269,8 @@ document.querySelector("#authCancel").onclick=()=>{if(!authDialog.classList.cont
 exportEl.onclick=()=>{const blob=new Blob([JSON.stringify({state,updatedAt:new Date().toISOString()},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="night-shift-coverage-data-"+new Date().toISOString().slice(0,10)+".json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
 importEl.onclick=()=>{if(!canEdit){authError.textContent="データ読込には編集ログインが必要です。";authDialog.showModal();return}importFile.click()};
 importFile.onchange=async e=>{const file=e.target.files&&e.target.files[0];if(!file)return;try{const parsed=JSON.parse(await file.text()),next=parsed.state||parsed;if(next.version!==1||!Array.isArray(next.staff)||!next.schedules)throw 0;state=next;cacheState();render();await save();showSyncNotice("")}catch(err){alert("夜勤表のバックアップファイルを確認してください。") }finally{e.target.value=""}};
-authForm.onsubmit=async e=>{e.preventDefault();if(!supabaseClient){authError.textContent="初期設定中です。しばらくお待ちください。";return}authError.textContent="ログイン中…";const {error}=await supabaseClient.auth.signInWithPassword({email:authEmail.value.trim(),password:authPassword.value});if(error){authError.textContent="メールアドレスまたはパスワードを確認してください。";return}authPassword.value="";try{const cached=JSON.parse(localStorage.getItem(CACHE_KEY)||"null");state=cached?.state||clone(INITIAL_STATE)}catch(err){state=clone(INITIAL_STATE)}unlockForSession();render();try{await loadRemote();showSyncNotice("")}catch(err){showSyncNotice("最新データを取得できませんでした。ネット接続を確認してください。")}startRealtime()};
-async function applyRemoteState(next){if(!next||next.version!==1||!Array.isArray(next.staff))return;state=next;cacheState();saveEl.textContent="同期済み";saveEl.className="save";render()}
+authForm.onsubmit=async e=>{e.preventDefault();if(!supabaseClient){authError.textContent="初期設定中です。しばらくお待ちください。";return}authError.textContent="ログイン中…";const {error}=await supabaseClient.auth.signInWithPassword({email:authEmail.value.trim(),password:authPassword.value});if(error){authError.textContent="メールアドレスまたはパスワードを確認してください。";return}authPassword.value="";try{const cached=JSON.parse(localStorage.getItem(CACHE_KEY)||"null");state=applyStaffRules(cached?.state||clone(INITIAL_STATE))}catch(err){state=clone(INITIAL_STATE)}unlockForSession();render();try{await loadRemote();showSyncNotice("")}catch(err){showSyncNotice("最新データを取得できませんでした。ネット接続を確認してください。")}startRealtime()};
+async function applyRemoteState(next){if(!next||next.version!==1||!Array.isArray(next.staff))return;state=applyStaffRules(next);cacheState();saveEl.textContent="同期済み";saveEl.className="save";render()}
 async function loadRemote(){const {data,error}=await supabaseClient.from("night_shift_state").select("state,updated_at").eq("id",1).maybeSingle();if(error)throw error;if(data?.state)await applyRemoteState(data.state)}
 function startRealtime(){if(realtimeChannel) return;realtimeChannel=supabaseClient.channel("night-shift-sync").on("postgres_changes",{event:"*",schema:"public",table:"night_shift_state",filter:"id=eq.1"},payload=>{const next=payload.new&&payload.new.state;if(next)applyRemoteState(next)}).subscribe()}
 (async()=>{
@@ -276,7 +283,7 @@ function startRealtime(){if(realtimeChannel) return;realtimeChannel=supabaseClie
   const {data:{session}}=await supabaseClient.auth.getSession();
   supabaseClient.auth.onAuthStateChange((_event,nextSession)=>{if(!nextSession)requireLogin("")});
   if(!session){requireLogin("");return}
-  try{const cached=JSON.parse(localStorage.getItem(CACHE_KEY)||"null");state=cached?.state||clone(INITIAL_STATE)}catch(e){state=clone(INITIAL_STATE)}
+  try{const cached=JSON.parse(localStorage.getItem(CACHE_KEY)||"null");state=applyStaffRules(cached?.state||clone(INITIAL_STATE))}catch(e){state=clone(INITIAL_STATE)}
   unlockForSession();saveEl.textContent="前回データ";render();
   try{await loadRemote();showSyncNotice("")}catch(e){saveEl.textContent="前回データ";saveEl.className="save error";showSyncNotice("最新データを取得できないため、前回データを表示しています。")}
   startRealtime();
