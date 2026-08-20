@@ -119,6 +119,9 @@ function alternatingRunBefore(schedule,date,id){
 function periodCount(schedule,date,id){
   const period=periodIndex(date);return Object.entries(schedule).reduce((count,[d,row])=>count+(periodIndex(d)===period&&Object.values(row||{}).includes(id)?1:0),0);
 }
+function remainingOpportunities(person,date,existing){
+  return dates(month).filter(d=>d>=date&&available(person,d)&&STORES.some(store=>person.helpStores.includes(store)&&!(existing[d]&&existing[d][store]===NO_NIGHT))).length;
+}
 function plannedCounts(people,existing){
   const target=Object.fromEntries(people.map(p=>[p.id,Math.min(p.min,p.max)]));
   const required=dates(month).reduce((total,date)=>total+STORES.filter(store=>!(existing[date]&&existing[date][store]===NO_NIGHT)).length,0);
@@ -145,6 +148,9 @@ function autoSchedule(){
         const ac=counts[a.id]||0,bc=counts[b.id]||0,ab=ac<a.min?1:0,bb=bc<b.min?1:0;
         const atarget=targets[a.id]||a.min||a.max,btarget=targets[b.id]||b.min||b.max;
         const areserve=isStaff(a,"大平")&&ac>=2?1:0,breserve=isStaff(b,"大平")&&bc>=2?1:0;if(areserve!==breserve)return areserve-breserve;
+        const aneed=Math.max(0,a.min-ac),bneed=Math.max(0,b.min-bc),aopen=remainingOpportunities(a,date,existing),bopen=remainingOpportunities(b,date,existing),acritical=aneed>0&&aneed>=aopen?1:0,bcritical=bneed>0&&bneed>=bopen?1:0;
+        if(acritical!==bcritical)return bcritical-acritical;
+        const aurgency=aneed/Math.max(aopen,1),burgency=bneed/Math.max(bopen,1);if(aurgency!==burgency)return burgency-aurgency;
         const elapsed=dayNumber(date)/daysInMonth(month),aquota=a.min>=10?Math.max(0,Math.ceil(elapsed*a.min)-ac):0,bquota=b.min>=10?Math.max(0,Math.ceil(elapsed*b.min)-bc):0;
         if(aquota!==bquota)return bquota-aquota;
         const arun=alternatingRunBefore(out,date,a.id),brun=alternatingRunBefore(out,date,b.id);if(arun!==brun)return arun-brun;
